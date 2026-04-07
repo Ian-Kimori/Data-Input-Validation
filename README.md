@@ -1,7 +1,5 @@
 # Data-Input-Validation
 
-I apologize for the oversight. To provide a truly comprehensive "End-to-End Clean" testing guide, I have broken down every single item from your checklist with the specific **action**, the **tool** to use, and exactly what constitutes a **Pass (Clean)** versus a **Fail (Dirty)**.
-
 ---
 
 ### 1. Cross-Site Scripting (XSS)
